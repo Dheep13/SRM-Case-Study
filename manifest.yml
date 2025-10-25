@@ -1,0 +1,17 @@
+---
+applications:
+- name: genai-learning-assistant
+  memory: 1G
+  instances: 1
+  buildpacks:
+    - python_buildpack
+  command: python -m uvicorn api:app --host 0.0.0.0 --port $PORT
+  path: .
+  env:
+    PYTHON_VERSION: 3.11.x
+  services: []
+  routes:
+    - route: genai-learning-assistant.cfapps.us10-001.hana.ondemand.com
+
+
+

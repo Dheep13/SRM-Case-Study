@@ -1,0 +1,102 @@
+﻿Folder PATH listing
+Volume serial number is 64DA-3198
+C:.
+|   .cursorignore
+|   .env
+|   .env.example
+|   .gitignore
+|   AGENTIC_RAG_EXPLAINED.md
+|   CHATBOT_GUIDE.md
+|   chat_agentic.py
+|   chat_with_database.py
+|   config.py
+|   FINAL_SUMMARY.md
+|   load_and_visualize.py
+|   main.py
+|   PROJECT_STRUCTURE.txt
+|   quick_start.py
+|   README.md
+|   requirements.txt
+|   setup_chatbot.py
+|   STRUCTURE_SUMMARY.md
+|   SUPABASE_FEATURES_SUMMARY.md
+|   SUPABASE_SETUP_GUIDE.md
+|   
++---agents
+|   |   content_scraper_agent.py
+|   |   orchestrator.py
+|   |   trend_analysis_agent.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           content_scraper_agent.cpython-312.pyc
+|           orchestrator.cpython-312.pyc
+|           trend_analysis_agent.cpython-312.pyc
+|           __init__.cpython-312.pyc
+|           
++---archive
+|   |   EvolveIQ-Adaptive-Intelligence-for-the-Ever-Changing-Tech-Landscape.pdf
+|   |   EvolveIQ_Review1.pdf
+|   |   evolveiq_review1_presentation.md
+|   |   EvolveIQ_Review2.pdf
+|   |   ext-Case study Guidelines.pdf
+|   |   
+|   \---old_tests
+|           generate_embeddings.py
+|           test_agentic_chatbot.py
+|           test_chatbot_output.py
+|           test_db_integration.py
+|           test_run.py
+|           
++---db_integration
+|   |   agentic_rag.py
+|   |   chatbot.py
+|   |   data_loader.py
+|   |   embedding_manager.py
+|   |   README.md
+|   |   schema.sql
+|   |   skill_extractor.py
+|   |   supabase_client.py
+|   |   trend_analyzer.py
+|   |   vector_embeddings.sql
+|   |   visualizer.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           agentic_rag.cpython-312.pyc
+|           data_loader.cpython-312.pyc
+|           embedding_manager.cpython-312.pyc
+|           skill_extractor.cpython-312.pyc
+|           supabase_client.cpython-312.pyc
+|           trend_analyzer.cpython-312.pyc
+|           visualizer.cpython-312.pyc
+|           __init__.cpython-312.pyc
+|           
++---docs
+|       genai_agents_architecture.md
+|       PROJECT_STRUCTURE.md
+|       REORGANIZATION_COMPLETE.md
+|       
++---examples
+|   |   example_usage.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           example_usage.cpython-312.pyc
+|           __init__.cpython-312.pyc
+|           
++---outputs
+|   +---charts
+|   |       category_distribution.png
+|   |       skill_trends_timeline.png
+|   |       student_roadmap.png
+|   |       top_skills_chart.png
+|   |       
+|   \---reports
+|           chatbot_response.txt
+|           latest_report.json
+|           test_report.json
+|           
+\---__pycache__
+        config.cpython-312.pyc
+        

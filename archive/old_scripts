@@ -1,0 +1,46 @@
+"""Main entry point for GenAI Learning and Trend Analysis Agents."""
+
+import sys
+from agents.orchestrator import GenAIAgentOrchestrator
+
+
+def main():
+    """Main entry point for running the GenAI agents."""
+    print("\n" + "="*80)
+    print("GenAI Learning & Trend Analysis Agents")
+    print("="*80 + "\n")
+    
+    # Check for command-line arguments
+    if len(sys.argv) > 1:
+        query = " ".join(sys.argv[1:])
+        print(f"Query: {query}\n")
+    else:
+        query = input("Enter your search query (or press Enter for default 'GenAI tutorials'): ").strip()
+        if not query:
+            query = "GenAI tutorials"
+    
+    try:
+        # Initialize and run orchestrator
+        orchestrator = GenAIAgentOrchestrator()
+        report = orchestrator.run(query, output_format="text")
+        
+        print(report)
+        
+        # Ask if user wants to save the report
+        save = input("\nSave detailed JSON report? (y/n): ").strip().lower()
+        if save == 'y':
+            json_report = orchestrator.run(query, output_format="json")
+            orchestrator.save_report(json_report)
+    
+    except Exception as e:
+        print(f"\nError: {str(e)}")
+        print("\nPlease ensure:")
+        print("1. .env file is configured with OPENAI_API_KEY")
+        print("2. All dependencies are installed: pip install -r requirements.txt")
+        print("\nFor more options, run: python quick_start.py")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
