@@ -135,14 +135,29 @@ class DataLoader:
                              for t in topics 
                              if skill_name.lower() in t.get('title', '').lower())
             
+            # Count LinkedIn engagement in topics (Bug Fix #1)
+            linkedin_posts = sum(t.get('metrics', {}).get('estimated_posts', 0) 
+                               for t in topics 
+                               if skill_name.lower() in t.get('title', '').lower() or 
+                                  skill_name.lower() in t.get('description', '').lower())
+            
+            # Calculate weighted trend score (Bug Fix #2)
+            from db_integration.skill_extractor import calculate_weighted_trend_score
+            trend_score = calculate_weighted_trend_score(
+                mention_count=mentions,
+                github_stars=github_stars,
+                linkedin_posts=linkedin_posts,
+                total_resources=len(resources)
+            )
+            
             trend_data = {
                 'date': today.isoformat(),
                 'mentions': mentions,
                 'resources': len([l for l in resource_skill_links 
                                  if l['skill']['skill_name'] == skill_name]),
                 'github_stars': github_stars,
-                'linkedin_posts': 0,
-                'score': calculate_skill_demand(skill_name, resources)
+                'linkedin_posts': linkedin_posts,
+                'score': trend_score
             }
             
             self.db.insert_skill_trend(skill_id, trend_data)

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FiSearch, FiCheckCircle, FiTrendingUp, FiBookOpen, FiExternalLink } from 'react-icons/fi';
 import { IoRocketSharp, IoSparklesSharp } from 'react-icons/io5';
+import api from '../utils/api';
 
 function Discover() {
   const [query, setQuery] = useState('');
@@ -14,14 +15,10 @@ function Discover() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/discover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query,
-          max_resources: maxResources,
-          load_to_db: loadToDb
-        })
+      const response = await api.discover({
+        query,
+        max_resources: maxResources,
+        load_to_db: loadToDb
       });
 
       const data = await response.json();

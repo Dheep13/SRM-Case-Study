@@ -1,0 +1,133 @@
+{
+  "ai_models": {
+    "llm_model": "gpt-4-turbo-preview",
+    "temperature": 0.7,
+    "max_tokens": 2000,
+    "embeddings_model": "text-embedding-3-small"
+  },
+  "agents": {
+    "content_scraper": {
+      "enabled": true,
+      "max_search_results": 10,
+      "search_depth": "advanced",
+      "allowed_platforms": ["tavily", "coursera", "udemy", "microsoft", "openai", "langchain", "huggingface"],
+      "require_approval": false
+    },
+    "trend_analyzer": {
+      "enabled": true,
+      "max_trend_items": 15,
+      "sources": ["github", "linkedin"],
+      "allowed_platforms": ["github", "linkedin"],
+      "require_approval": false
+    },
+    "orchestrator": {
+      "enabled": true,
+      "max_search_results": 25,
+      "timeout_seconds": 60,
+      "allowed_platforms": ["content_scraper", "trend_analysis"],
+      "require_approval": false
+    },
+    "content_types": ["tutorial", "course", "article", "video", "documentation"]
+  },
+  "platforms": {
+    "github": {
+      "access_level": "allowed",
+      "rate_limit": 5000,
+      "blocked_keywords": ["private", "internal"],
+      "allowed_content_types": ["repositories", "topics"]
+    },
+    "tavily": {
+      "access_level": "allowed",
+      "rate_limit": 1000,
+      "blocked_keywords": ["adult", "gambling", "illegal"],
+      "allowed_content_types": ["web", "news"]
+    },
+    "coursera": {
+      "access_level": "allowed",
+      "rate_limit": 100,
+      "blocked_keywords": [],
+      "allowed_content_types": ["courses", "specializations"]
+    },
+    "udemy": {
+      "access_level": "allowed",
+      "rate_limit": 100,
+      "blocked_keywords": [],
+      "allowed_content_types": ["courses"]
+    },
+    "microsoft": {
+      "access_level": "allowed",
+      "rate_limit": 200,
+      "blocked_keywords": [],
+      "allowed_content_types": ["documentation", "courses"]
+    },
+    "openai": {
+      "access_level": "allowed",
+      "rate_limit": 1000,
+      "blocked_keywords": [],
+      "allowed_content_types": ["documentation"]
+    },
+    "langchain": {
+      "access_level": "allowed",
+      "rate_limit": 500,
+      "blocked_keywords": [],
+      "allowed_content_types": ["documentation"]
+    },
+    "huggingface": {
+      "access_level": "allowed",
+      "rate_limit": 500,
+      "blocked_keywords": [],
+      "allowed_content_types": ["courses", "models"]
+    },
+    "linkedin": {
+      "access_level": "restricted",
+      "rate_limit": 50,
+      "blocked_keywords": ["personal", "private"],
+      "allowed_content_types": ["professional_posts"]
+    },
+    "reddit": {
+      "access_level": "blocked",
+      "rate_limit": 0,
+      "blocked_keywords": ["all"],
+      "allowed_content_types": []
+    },
+    "twitter": {
+      "access_level": "blocked",
+      "rate_limit": 0,
+      "blocked_keywords": ["all"],
+      "allowed_content_types": []
+    }
+  },
+  "api_endpoints": {
+    "github_api": "https://api.github.com",
+    "tavily_enabled": true
+  },
+  "database": {
+    "query_timeout": 30,
+    "max_results": 100,
+    "enable_caching": true
+  },
+  "rag_workflow": {
+    "enable_reasoning": true,
+    "enable_refinement": true,
+    "confidence_threshold": 0.7,
+    "max_refinement_iterations": 2,
+    "search_result_limit": 10
+  },
+  "trending": {
+    "max_mention_rate": 0.3,
+    "min_baseline_score": 50,
+    "trending_threshold": 70,
+    "mention_weight": 0.5,
+    "github_weight": 0.3,
+    "linkedin_weight": 0.2,
+    "trend_window_days": 30,
+    "recency_decay_factor": 0.1
+  },
+  "system": {
+    "max_concurrent_requests": 10,
+    "cache_duration_hours": 24,
+    "enable_audit_logging": true,
+    "log_retention_days": 90
+  }
+}
+

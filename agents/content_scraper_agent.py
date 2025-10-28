@@ -31,10 +31,12 @@ def search_web_content(query: str) -> List[Dict[str, Any]]:
     Returns:
         List of search results with metadata
     """
+    from agent_access_control import access_controller
+    
     results = []
     
-    # Try Tavily API first if available
-    if config.TAVILY_API_KEY:
+    # Check if Tavily access is allowed
+    if config.TAVILY_API_KEY and access_controller.check_access("content_scraper", "tavily", "https://api.tavily.com/search", "web"):
         try:
             from tavily import TavilyClient
             client = TavilyClient(api_key=config.TAVILY_API_KEY)
@@ -46,64 +48,73 @@ def search_web_content(query: str) -> List[Dict[str, Any]]:
             )
             
             for result in search_results.get('results', []):
-                results.append({
-                    'title': result.get('title', ''),
-                    'url': result.get('url', ''),
-                    'description': result.get('content', ''),
-                    'source': 'tavily',
-                    'timestamp': datetime.now().isoformat()
-                })
+                # Check for blocked keywords
+                if not _contains_blocked_keywords(result.get('content', ''), 'tavily'):
+                    results.append({
+                        'title': result.get('title', ''),
+                        'url': result.get('url', ''),
+                        'description': result.get('content', ''),
+                        'source': 'tavily',
+                        'timestamp': datetime.now().isoformat()
+                    })
         except Exception as e:
             print(f"Tavily search failed: {e}, using fallback method")
     
     # Fallback: Use Google search simulation with common learning platforms
     if not results:
         learning_platforms = [
-            f"https://www.coursera.org/search?query={query}%20generative%20AI",
-            f"https://www.udemy.com/courses/search/?q={query}%20GenAI",
-            f"https://learn.microsoft.com/en-us/search/?terms={query}%20generative%20AI",
+            ("coursera", f"https://www.coursera.org/search?query={query}%20generative%20AI"),
+            ("udemy", f"https://www.udemy.com/courses/search/?q={query}%20GenAI"),
+            ("microsoft", f"https://learn.microsoft.com/en-us/search/?terms={query}%20generative%20AI"),
         ]
         
-        for url in learning_platforms:
-            try:
-                platform_name = url.split('/')[2].replace('www.', '').split('.')[0]
-                results.append({
-                    'title': f"{query} courses on {platform_name.title()}",
-                    'url': url,
-                    'description': f"Search results for {query} related to GenAI on {platform_name}",
-                    'source': platform_name,
-                    'timestamp': datetime.now().isoformat()
-                })
-            except Exception:
-                continue
+        for platform_name, url in learning_platforms:
+            # Check if platform access is allowed
+            if access_controller.check_access("content_scraper", platform_name, url, "courses"):
+                try:
+                    results.append({
+                        'title': f"{query} courses on {platform_name.title()}",
+                        'url': url,
+                        'description': f"Search results for {query} related to GenAI on {platform_name}",
+                        'source': platform_name,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                except Exception:
+                    continue
     
-    # Add some curated GenAI resources
+    # Add some curated GenAI resources (if platforms are allowed)
     curated_resources = [
-        {
-            'title': 'OpenAI Documentation',
-            'url': 'https://platform.openai.com/docs',
-            'description': 'Official OpenAI API documentation and guides for GenAI applications',
-            'source': 'openai',
-            'timestamp': datetime.now().isoformat()
-        },
-        {
-            'title': 'LangChain Documentation',
-            'url': 'https://python.langchain.com/docs/get_started/introduction',
-            'description': 'Comprehensive guide to building GenAI applications with LangChain',
-            'source': 'langchain',
-            'timestamp': datetime.now().isoformat()
-        },
-        {
-            'title': 'Hugging Face Courses',
-            'url': 'https://huggingface.co/learn',
-            'description': 'Free courses on NLP, transformers, and generative AI',
-            'source': 'huggingface',
-            'timestamp': datetime.now().isoformat()
-        }
+        ("openai", "OpenAI Documentation", "https://platform.openai.com/docs", "Official OpenAI API documentation and guides for GenAI applications"),
+        ("langchain", "LangChain Documentation", "https://python.langchain.com/docs/get_started/introduction", "Comprehensive guide to building GenAI applications with LangChain"),
+        ("huggingface", "Hugging Face Courses", "https://huggingface.co/learn", "Free courses on NLP, transformers, and generative AI")
     ]
     
-    results.extend(curated_resources)
+    for platform_name, title, url, description in curated_resources:
+        if access_controller.check_access("content_scraper", platform_name, url, "documentation"):
+            results.append({
+                'title': title,
+                'url': url,
+                'description': description,
+                'source': platform_name,
+                'timestamp': datetime.now().isoformat()
+            })
+    
     return results[:config.MAX_SEARCH_RESULTS]
+
+
+def _contains_blocked_keywords(content: str, platform: str) -> bool:
+    """Check if content contains blocked keywords for a platform."""
+    from agent_access_control import access_controller
+    
+    if platform not in access_controller.platforms:
+        return False
+    
+    blocked_keywords = access_controller.platforms[platform].blocked_keywords
+    if not blocked_keywords:
+        return False
+    
+    content_lower = content.lower()
+    return any(keyword.lower() in content_lower for keyword in blocked_keywords)
 
 
 @tool

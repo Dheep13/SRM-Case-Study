@@ -287,3 +287,57 @@ def calculate_skill_demand(skill_name: str, resources: List[Dict[str, Any]]) -> 
     
     return max(score, 50)  # Minimum score of 50 for known skills
 
+
+def calculate_weighted_trend_score(
+    mention_count: int,
+    github_stars: int,
+    linkedin_posts: int,
+    total_resources: int,
+    mention_weight: float = 0.5,
+    github_weight: float = 0.3,
+    linkedin_weight: float = 0.2,
+    max_mention_rate: float = 0.3,
+    min_baseline_score: int = 50
+) -> int:
+    """Calculate weighted trend score using multiple engagement factors.
+    
+    Args:
+        mention_count: Number of times skill mentioned in resources
+        github_stars: Total GitHub stars for related repositories
+        linkedin_posts: Estimated LinkedIn posts
+        total_resources: Total number of resources analyzed
+        mention_weight: Weight for mention-based scoring (default: 0.5)
+        github_weight: Weight for GitHub stars (default: 0.3)
+        linkedin_weight: Weight for LinkedIn posts (default: 0.2)
+        max_mention_rate: Maximum expected mention rate (default: 0.3)
+        min_baseline_score: Minimum score for known skills (default: 50)
+        
+    Returns:
+        Weighted trend score (0-100)
+    """
+    # Normalize mention score to 0-100
+    if total_resources > 0:
+        max_mentions = total_resources * max_mention_rate
+        mention_score = min(100, int((mention_count / max_mentions) * 100)) if max_mentions > 0 else 0
+    else:
+        mention_score = 0
+    
+    # GitHub stars scoring (log scale normalization)
+    github_score = min(100, int((github_stars / 1000) * 10)) if github_stars > 0 else 0
+    
+    # LinkedIn posts scoring (log scale normalization)
+    linkedin_score = min(100, int((linkedin_posts / 500) * 10)) if linkedin_posts > 0 else 0
+    
+    # Calculate weighted average
+    total_weight = mention_weight + github_weight + linkedin_weight
+    if total_weight > 0:
+        weighted_score = (
+            mention_weight * mention_score +
+            github_weight * github_score +
+            linkedin_weight * linkedin_score
+        ) / total_weight
+    else:
+        weighted_score = 0
+    
+    # Ensure minimum baseline score for known skills
+    return max(int(weighted_score), min_baseline_score)

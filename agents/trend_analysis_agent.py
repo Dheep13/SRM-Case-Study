@@ -29,9 +29,16 @@ def fetch_github_trends(topic: str) -> List[Dict[str, Any]]:
     Returns:
         List of trending repositories and topics
     """
-    trends = []
-    headers = {}
+    from agent_access_control import access_controller
     
+    trends = []
+    
+    # Check if GitHub access is allowed
+    if not access_controller.check_access("trend_analysis", "github", config.GITHUB_TRENDING_URL, "repositories"):
+        print("GitHub access blocked by admin policy")
+        return trends
+    
+    headers = {}
     if config.GITHUB_TOKEN:
         headers['Authorization'] = f'token {config.GITHUB_TOKEN}'
     

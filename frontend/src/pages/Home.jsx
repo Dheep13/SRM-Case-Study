@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiMessageSquare, FiSearch, FiBarChart2, FiCheckCircle, FiAlertCircle, FiArrowRight, FiBook, FiZap } from 'react-icons/fi';
 import { IoSparklesSharp } from 'react-icons/io5';
+import api from '../utils/api';
 
 function Home() {
   const [health, setHealth] = useState(null);
@@ -10,13 +11,13 @@ function Home() {
 
   useEffect(() => {
     // Check API health
-    fetch('/api/health')
+    api.health()
       .then(res => res.json())
       .then(data => setHealth(data))
       .catch(() => setHealth({ status: 'offline' }));
 
     // Get analytics stats
-    fetch('/api/analytics')
+    api.analytics()
       .then(res => res.json())
       .then(data => setStats(data.stats))
       .catch(err => console.log('Stats not available'));
@@ -24,11 +25,6 @@ function Home() {
 
   return (
     <div className="page">
-      {/* Status Indicator - Top Right */}
-      <div className={`status-dot-indicator ${health?.status === 'healthy' ? 'online' : 'offline'}`} 
-           title={health?.status === 'healthy' ? 'System Online' : 'Connecting...'}>
-      </div>
-
       <div className="page-header">
         <h1 className="page-title gradient-text">Welcome to Your AI Learning Assistant</h1>
         <p className="page-subtitle">Powered by Agentic RAG, AI Agents, and Real-Time Data</p>

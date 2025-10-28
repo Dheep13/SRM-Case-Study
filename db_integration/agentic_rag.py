@@ -23,6 +23,7 @@ class AgenticRAGState(TypedDict):
     refined_response: str
     confidence_score: float
     needs_clarification: bool
+    refinement_count: int  # Track refinement iterations
 
 
 @tool
@@ -80,7 +81,11 @@ def semantic_search_skills(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     db = SupabaseManager()
     embeddings = OpenAIEmbeddings(api_key=config.OPENAI_API_KEY)
     
-    query_embedding = embeddings.embed_query(query)
+    try:
+        query_embedding = embeddings.embed_query(query)
+    except Exception as e:
+        print(f"Warning: Embedding failed ({e}), using fallback")
+        return db.get_top_skills(limit=limit)
     
     try:
         result = db.client.rpc(
@@ -93,7 +98,8 @@ def semantic_search_skills(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         ).execute()
         
         return result.data if result.data else []
-    except:
+    except Exception as e:
+        print(f"Warning: Database search failed ({e}), using fallback")
         # Fallback to top skills
         return db.get_top_skills(limit=limit)
 
@@ -112,7 +118,11 @@ def semantic_search_resources(query: str, limit: int = 5) -> List[Dict[str, Any]
     db = SupabaseManager()
     embeddings = OpenAIEmbeddings(api_key=config.OPENAI_API_KEY)
     
-    query_embedding = embeddings.embed_query(query)
+    try:
+        query_embedding = embeddings.embed_query(query)
+    except Exception as e:
+        print(f"Warning: Embedding failed ({e}), using fallback")
+        return db.get_all_resources(limit=limit)
     
     try:
         result = db.client.rpc(
@@ -125,7 +135,8 @@ def semantic_search_resources(query: str, limit: int = 5) -> List[Dict[str, Any]
         ).execute()
         
         return result.data if result.data else []
-    except:
+    except Exception as e:
+        print(f"Warning: Database search failed ({e}), using fallback")
         return db.get_all_resources(limit=limit)
 
 
@@ -244,7 +255,7 @@ class AgenticRAGChatbot:
             "verify",
             self._should_refine_again,
             {
-                "refine_again": "reason",
+                "refine_again": "refine",  # Fixed: was "reason" causing infinite loop
                 "done": END
             }
         )
@@ -433,6 +444,9 @@ class AgenticRAGChatbot:
         """Refine and improve the response."""
         print("\n[Agent] Refining response...")
         
+        # Increment refinement counter
+        state['refinement_count'] = state.get('refinement_count', 0) + 1
+        
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a response refinement expert. Improve the draft response by:
             1. Making it more concise and clear
@@ -507,9 +521,20 @@ class AgenticRAGChatbot:
     
     def _should_refine_again(self, state: AgenticRAGState) -> str:
         """Decide if response needs another refinement."""
-        # Only refine once more if quality is too low
-        if state['confidence_score'] < 0.6 and len(state['reasoning_steps']) < 10:
+        # Safety: limit to max 2 refinement iterations
+        max_refinements = 2
+        current_count = state.get('refinement_count', 0)
+        
+        # Stop if we've refined too many times
+        if current_count >= max_refinements:
+            print(f"  Max refinements ({max_refinements}) reached")
+            return "done"
+        
+        # Only refine again if quality is low
+        if state['confidence_score'] < 0.6:
+            print(f"  Low confidence ({state['confidence_score']:.2f}), refining again...")
             return "refine_again"
+        
         return "done"
     
     def chat(self, user_query: str, student_level: str = "Junior") -> str:
@@ -536,7 +561,8 @@ class AgenticRAGChatbot:
             draft_response="",
             refined_response="",
             confidence_score=0.0,
-            needs_clarification=False
+            needs_clarification=False,
+            refinement_count=0  # Initialize counter
         )
         
         result = self.graph.invoke(initial_state)
@@ -546,6 +572,3 @@ class AgenticRAGChatbot:
         print("="*80 + "\n")
         
         return result['refined_response']
-
-
-

@@ -112,19 +112,21 @@ ORDER BY s.demand_score DESC, resource_count DESC;
 
 -- View: skill_trend_summary
 -- Summarizes skill trends over the last 30 days
+-- Bug Fix #3: Now includes all skills, using demand_score as fallback
 CREATE OR REPLACE VIEW skill_trend_summary AS
 SELECT 
     s.skill_name,
     s.category,
+    s.demand_score,
     COUNT(st.id) as data_points,
-    AVG(st.trend_score) as avg_trend_score,
-    SUM(st.mention_count) as total_mentions,
-    SUM(st.resource_count) as total_resources,
+    COALESCE(AVG(st.trend_score), s.demand_score) as avg_trend_score,
+    COALESCE(SUM(st.mention_count), 0) as total_mentions,
+    COALESCE(SUM(st.resource_count), 0) as total_resources,
     MAX(st.trend_date) as latest_date
 FROM it_skills s
-LEFT JOIN skill_trends st ON s.id = st.skill_id
-WHERE st.trend_date >= CURRENT_DATE - INTERVAL '30 days'
-GROUP BY s.id, s.skill_name, s.category
+LEFT JOIN skill_trends st ON s.id = st.skill_id 
+    AND st.trend_date >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY s.id, s.skill_name, s.category, s.demand_score
 ORDER BY avg_trend_score DESC;
 
 -- View: recommended_learning_path

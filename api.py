@@ -101,6 +101,7 @@ async def health_check():
 async def chat(request: ChatRequest):
     """Chat with Agentic RAG bot."""
     try:
+        # Try the AgenticRAGChatbot with your fixes
         from db_integration.agentic_rag import AgenticRAGChatbot
         
         bot = AgenticRAGChatbot()
@@ -111,7 +112,11 @@ async def chat(request: ChatRequest):
             student_level=request.student_level
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+        # Fallback to simple response if chatbot fails
+        return ChatResponse(
+            response=f"I'm sorry, I'm having trouble processing your request right now. Error: {str(e)}",
+            student_level=request.student_level
+        )
 
 # Discovery endpoint
 @app.post("/api/discover", response_model=DiscoveryResponse)
@@ -169,20 +174,16 @@ async def get_analytics(student_level: str = "Junior"):
     """Get analytics and recommendations."""
     try:
         from db_integration.supabase_client import SupabaseManager
-        from db_integration.trend_analyzer import TrendAnalyzer
         
         db = SupabaseManager()
-        analyzer = TrendAnalyzer()
         
-        # Get trending skills for student level
+        # Get trending skills using the view instead of TrendAnalyzer
         try:
-            analysis = analyzer.get_student_skill_recommendations(student_level)
-            # Transform the response to match our expected format
-            trending_skills = analysis.get('immediate_focus', []) + analysis.get('next_to_learn', [])
+            trending_skills = db.client.table('skill_trend_summary').select('*').limit(10).execute()
+            trending_skills = trending_skills.data if trending_skills.data else []
         except Exception as e:
             print(f"Trend analysis error: {e}")
             trending_skills = []
-            analysis = {}
         
         # Get all skills
         try:
@@ -283,6 +284,193 @@ async def get_resources(category: Optional[str] = None, limit: int = 50):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Resources error: {str(e)}")
+
+# ==================== ADMIN ENDPOINTS ====================
+
+# Get all admin settings
+@app.get("/api/admin/settings")
+async def get_all_settings():
+    """Get all configuration settings."""
+    try:
+        import json
+        # Load from admin_config.json
+        with open('admin_config.json', 'r') as f:
+            config = json.load(f)
+        
+        # Apply database overrides if available
+        try:
+            from db_integration.supabase_client import SupabaseManager
+            db = SupabaseManager()
+            overrides = db.client.table('system_settings').select('*').execute()
+            
+            # Apply overrides
+            for override in overrides.data:
+                category = override.get('category')
+                key = override.get('key')
+                value = override.get('value')
+                if category in config:
+                    config[category][key] = value
+        except:
+            pass  # If no database, just use file config
+        
+        return config
+    except Exception as e:
+        # Return defaults if file doesn't exist
+        return {
+            "ai_models": {"llm_model": "gpt-4-turbo-preview", "temperature": 0.7, "max_tokens": 2000},
+            "agents": {"content_scraper": {"enabled": True}, "trend_analyzer": {"enabled": True}},
+            "trending": {"trending_threshold": 70, "mention_weight": 0.5, "github_weight": 0.3},
+            "api_endpoints": {"tavily_enabled": True},
+            "rag_workflow": {"enable_reasoning": True, "confidence_threshold": 0.7}
+        }
+
+# Update admin settings
+@app.put("/api/admin/settings")
+async def update_settings(settings: Dict[str, Any]):
+    """Update configuration settings."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        import json
+        
+        db = SupabaseManager()
+        
+        # Save to database
+        for category, values in settings.items():
+            if isinstance(values, dict):
+                for key, value in values.items():
+                    # Handle nested config (like content_scraper)
+                    if isinstance(value, dict):
+                        for nested_key, nested_value in value.items():
+                            db.client.table('system_settings').upsert({
+                                'category': category,
+                                'key': f"{key}.{nested_key}",
+                                'value': json.dumps(nested_value) if isinstance(nested_value, (list, dict)) else nested_value,
+                                'data_type': 'string' if isinstance(nested_value, str) else 
+                                            'integer' if isinstance(nested_value, int) else
+                                            'float' if isinstance(nested_value, float) else 'boolean'
+                            }).execute()
+                    else:
+                        db.client.table('system_settings').upsert({
+                            'category': category,
+                            'key': key,
+                            'value': json.dumps(value) if isinstance(value, (list, dict)) else value,
+                            'data_type': 'string' if isinstance(value, str) else 
+                                        'integer' if isinstance(value, int) else
+                                        'float' if isinstance(value, float) else 'boolean'
+                        }).execute()
+        
+        return {"status": "success", "message": "Settings updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
+
+# Reset settings to defaults
+@app.post("/api/admin/settings/reset")
+async def reset_settings():
+    """Reset all settings to defaults."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        db = SupabaseManager()
+        
+        # Delete all overrides from database
+        db.client.table('system_settings').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
+        
+        return {"status": "success", "message": "Settings reset to defaults"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reset error: {str(e)}")
+
+# Get audit log
+@app.get("/api/admin/audit-log")
+async def get_audit_log(limit: int = 50):
+    """Get configuration change audit log."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        db = SupabaseManager()
+        
+        result = db.client.table('config_audit_log').select('*').order('changed_at', desc=True).limit(limit).execute()
+        
+        return {"entries": result.data}
+    except Exception as e:
+        return {"entries": [], "error": str(e)}
+
+# Admin health check
+# Agent Access Control endpoints
+@app.get("/api/admin/agent-access")
+async def get_agent_access():
+    """Get current agent access control configuration."""
+    try:
+        from agent_access_control import access_controller
+        return access_controller.export_config()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting agent access config: {str(e)}")
+
+@app.put("/api/admin/agent-access")
+async def update_agent_access(config_data: Dict[str, Any]):
+    """Update agent access control configuration."""
+    try:
+        from agent_access_control import access_controller
+        success = access_controller.import_config(config_data)
+        if success:
+            return {"message": "Agent access configuration updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid configuration data")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating agent access config: {str(e)}")
+
+@app.get("/api/admin/agent-access/audit")
+async def get_agent_access_audit(limit: int = 100):
+    """Get audit log of agent access attempts."""
+    try:
+        from agent_access_control import access_controller
+        audit_log = access_controller.get_audit_log(limit)
+        return {"entries": audit_log}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting audit log: {str(e)}")
+
+@app.post("/api/admin/agent-access/test")
+async def test_agent_access(request: Dict[str, Any]):
+    """Test agent access to a specific platform."""
+    try:
+        from agent_access_control import access_controller
+        
+        agent_name = request.get("agent_name")
+        platform = request.get("platform")
+        endpoint = request.get("endpoint")
+        content_type = request.get("content_type")
+        
+        if not all([agent_name, platform, endpoint]):
+            raise HTTPException(status_code=400, detail="Missing required parameters")
+        
+        allowed = access_controller.check_access(agent_name, platform, endpoint, content_type)
+        return {
+            "allowed": allowed,
+            "agent": agent_name,
+            "platform": platform,
+            "endpoint": endpoint,
+            "content_type": content_type
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error testing access: {str(e)}")
+
+@app.get("/api/admin/health")
+async def admin_health():
+    """Admin system health check."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        db = SupabaseManager()
+        
+        # Check database
+        db.client.table('system_settings').select('count').execute()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "config_loaded": True
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
 # Serve static files (charts)
 from fastapi.staticfiles import StaticFiles

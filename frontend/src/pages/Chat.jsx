@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FiUser, FiSend, FiMessageSquare } from 'react-icons/fi';
+import api from '../utils/api';
 import { IoSparklesSharp } from 'react-icons/io5';
 import { BsLightbulb } from 'react-icons/bs';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 
 function Chat({ studentLevel }) {
   const [messages, setMessages] = useState([]);
@@ -24,13 +26,9 @@ function Chat({ studentLevel }) {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: input,
-          student_level: studentLevel
-        })
+      const response = await api.chat({
+        message: input,
+        student_level: studentLevel
       });
 
       const data = await response.json();
@@ -95,7 +93,7 @@ function Chat({ studentLevel }) {
                     {msg.role === 'user' ? <FiUser /> : <IoSparklesSharp />}
                   </div>
                   <div className="message-content">
-                    <div className="message-text">{msg.content}</div>
+                    <MarkdownRenderer content={msg.content} />
                   </div>
                 </div>
               ))}
