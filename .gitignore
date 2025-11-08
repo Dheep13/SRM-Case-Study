@@ -16,6 +16,10 @@ frontend/public/env-config.js
 config.json
 secrets.json
 credentials.json
+set_cf_env.bat
+set_env_vars.bat
+**/set_cf_env.bat
+**/set_env_vars.bat
 
 # Python
 __pycache__/
