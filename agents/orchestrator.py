@@ -4,7 +4,7 @@ from typing import Dict, Any, TypedDict
 from datetime import datetime
 import json
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, END
 from agents.content_scraper_agent import ContentScraperAgent
 from agents.trend_analysis_agent import TrendAnalysisAgent
@@ -29,13 +29,7 @@ class GenAIAgentOrchestrator:
         
         self.content_agent = ContentScraperAgent()
         self.trend_agent = TrendAnalysisAgent()
-        
-        self.llm = ChatOpenAI(
-            model=config.LLM_MODEL,
-            temperature=config.LLM_TEMPERATURE,
-            api_key=config.OPENAI_API_KEY
-        )
-        
+        self.llm = None  # Lazy init
         self.graph = self._build_graph()
     
     def _build_graph(self) -> StateGraph:
@@ -119,38 +113,39 @@ class GenAIAgentOrchestrator:
         return state
     
     def _generate_insights(self, resources: list, trends: list, query: str) -> str:
-        """Generate insights using LLM based on collected data."""
+        """Generate insights using LLM based on collected data - OPTIMIZED."""
+        if not self.llm:
+            try:
+                from langchain_openai import ChatOpenAI
+                self.llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    temperature=0.7,
+                    max_tokens=300,
+                    api_key=config.OPENAI_API_KEY
+                )
+            except ImportError:
+                return f"Found {len(resources)} resources and {len(trends)} trends for '{query}'."
+
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert GenAI analyst. Analyze the learning resources and trending topics 
-            to provide actionable insights for someone wanting to learn about GenAI."""),
-            ("user", """
-            Query: {query}
-            
-            Learning Resources Found: {resource_count}
-            Top Resources: {top_resources}
-            
-            Trending Topics Found: {trend_count}
-            Top Trends: {top_trends}
-            
-            Provide a brief analysis (3-4 bullet points) covering:
-            - Key learning paths recommended
-            - Most relevant trending topics to focus on
-            - Recommended resources to start with
-            - Current industry focus areas
-            """)
+            ("system", """Expert GenAI analyst. Give 3-4 bullet points on: learning paths, trending topics, recommended resources, industry focus."""),
+            ("user", """Query: {query}
+Resources ({resource_count}): {top_resources}
+Trends ({trend_count}): {top_trends}
+
+Brief analysis:""")
         ])
-        
+
         top_resources = [r.get('title', '') for r in resources[:3]]
         top_trends = [t.get('title', '') for t in trends[:3]]
-        
+
         try:
             response = self.llm.invoke(
                 prompt.format_messages(
                     query=query,
                     resource_count=len(resources),
-                    top_resources=", ".join(top_resources),
+                    top_resources=", ".join(top_resources) if top_resources else "None found",
                     trend_count=len(trends),
-                    top_trends=", ".join(top_trends)
+                    top_trends=", ".join(top_trends) if top_trends else "None found"
                 )
             )
             return response.content
@@ -293,4 +288,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

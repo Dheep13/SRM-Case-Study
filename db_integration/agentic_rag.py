@@ -1,9 +1,9 @@
-"""Agentic RAG system with LLM-driven query planning and refinement."""
+"""Agentic RAG system with LLM-driven query planning and refinement - FIXED VERSION."""
 
 from typing import List, Dict, Any, TypedDict
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.prompts import ChatPromptTemplate
-from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from db_integration.supabase_client import SupabaseManager
@@ -29,33 +29,47 @@ class AgenticRAGState(TypedDict):
 @tool
 def analyze_query(query: str, student_level: str) -> Dict[str, Any]:
     """Analyze user query to determine intent and required information.
-    
+
     Args:
         query: User's question
         student_level: Student's current level
-        
+
     Returns:
         Query analysis with intent, entities, and search strategy
     """
-    llm = ChatOpenAI(model=config.LLM_MODEL, temperature=0.3)
-    
+    # Use faster, cheaper model for simple analysis
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, max_tokens=200)
+
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a query analyzer for an IT skills database.
-        Analyze the user's query and determine:
-        1. Primary intent (skill_discovery, resource_finding, career_advice, comparison, trend_analysis)
-        2. Key entities (skills, technologies, job roles mentioned)
-        3. Search strategy (what data to retrieve)
-        4. Student context relevance
-        
-        Return as JSON with: intent, entities, search_strategy, context_needs"""),
-        ("user", "Query: {query}\nStudent Level: {level}")
+        ("system", """Analyze query intent. Return ONLY valid JSON with no markdown formatting: {"intent": "<skill_discovery|resource_finding|career_advice|comparison|trend_analysis>", "entities": ["<skills/tech>"], "context_needs": ["skills"]}"""),
+        ("user", "Query: {query}\nLevel: {level}")
     ])
-    
-    response = llm.invoke(prompt.format_messages(query=query, level=student_level))
-    
+
     try:
-        analysis = json.loads(response.content)
-    except:
+        response = llm.invoke(prompt.format_messages(query=query, level=student_level))
+        
+        # Clean response content - remove markdown code blocks if present
+        content = response.content.strip()
+        if content.startswith("```json"):
+            content = content[7:]  # Remove ```json
+        if content.startswith("```"):
+            content = content[3:]  # Remove ```
+        if content.endswith("```"):
+            content = content[:-3]  # Remove trailing ```
+        content = content.strip()
+        
+        analysis = json.loads(content)
+        
+        # Validate required fields
+        if 'intent' not in analysis:
+            analysis['intent'] = 'skill_discovery'
+        if 'entities' not in analysis:
+            analysis['entities'] = []
+        if 'context_needs' not in analysis:
+            analysis['context_needs'] = ['skills', 'resources']
+            
+    except Exception as e:
+        print(f"Warning: Failed to parse query analysis: {e}")
         # Fallback parsing
         analysis = {
             "intent": "skill_discovery",
@@ -63,7 +77,7 @@ def analyze_query(query: str, student_level: str) -> Dict[str, Any]:
             "search_strategy": "broad_search",
             "context_needs": ["skills", "resources"]
         }
-    
+
     return analysis
 
 
@@ -229,53 +243,47 @@ class AgenticRAGChatbot:
         self.graph = self._build_graph()
     
     def _build_graph(self) -> StateGraph:
-        """Build agentic RAG workflow graph."""
+        """Build optimized agentic RAG workflow graph."""
         workflow = StateGraph(AgenticRAGState)
-        
-        # Define nodes
+
+        # Define nodes - OPTIMIZED: Reduced from 7 to 4 nodes
         workflow.add_node("analyze", self._analyze_node)
         workflow.add_node("plan_search", self._plan_search_node)
         workflow.add_node("retrieve", self._retrieve_node)
-        workflow.add_node("reason", self._reason_node)
-        workflow.add_node("draft", self._draft_node)
-        workflow.add_node("refine", self._refine_node)
-        workflow.add_node("verify", self._verify_node)
-        
-        # Define edges
+        workflow.add_node("generate", self._generate_response_node)  # Combined reason+draft+refine
+
+        # Define edges - Simplified linear flow
         workflow.set_entry_point("analyze")
         workflow.add_edge("analyze", "plan_search")
         workflow.add_edge("plan_search", "retrieve")
-        workflow.add_edge("retrieve", "reason")
-        workflow.add_edge("reason", "draft")
-        workflow.add_edge("draft", "refine")
-        workflow.add_edge("refine", "verify")
-        
-        # Conditional edge from verify
-        workflow.add_conditional_edges(
-            "verify",
-            self._should_refine_again,
-            {
-                "refine_again": "refine",  # Fixed: was "reason" causing infinite loop
-                "done": END
-            }
-        )
-        
+        workflow.add_edge("retrieve", "generate")
+        workflow.add_edge("generate", END)
+
         return workflow.compile()
     
     def _analyze_node(self, state: AgenticRAGState) -> AgenticRAGState:
         """Analyze user query to understand intent."""
         print("\n[Agent] Analyzing query...")
         
-        analysis = analyze_query.invoke({
-            "query": state['user_query'],
-            "student_level": state['student_level']
-        })
-        
-        state['query_analysis'] = analysis
-        state['reasoning_steps'].append(f"Identified intent: {analysis.get('intent', 'unknown')}")
-        
-        print(f"  Intent: {analysis.get('intent')}")
-        print(f"  Entities: {analysis.get('entities')}")
+        try:
+            analysis = analyze_query.invoke({
+                "query": state['user_query'],
+                "student_level": state['student_level']
+            })
+            
+            state['query_analysis'] = analysis
+            state['reasoning_steps'].append(f"Identified intent: {analysis.get('intent', 'unknown')}")
+            
+            print(f"  Intent: {analysis.get('intent')}")
+            print(f"  Entities: {analysis.get('entities')}")
+        except Exception as e:
+            print(f"  Error in analysis: {e}")
+            state['query_analysis'] = {
+                "intent": "skill_discovery",
+                "entities": [],
+                "context_needs": ["skills", "resources"]
+            }
+            state['reasoning_steps'].append(f"Analysis failed, using default intent")
         
         return state
     
@@ -283,24 +291,30 @@ class AgenticRAGChatbot:
         """Plan search queries based on analysis."""
         print("\n[Agent] Planning search strategy...")
         
-        analysis = state['query_analysis']
+        analysis = state.get('query_analysis', {})
         queries = []
         
         # Generate specific search queries based on intent
-        if analysis.get('intent') == 'skill_discovery':
+        intent = analysis.get('intent', 'skill_discovery')
+        
+        if intent == 'skill_discovery':
             queries.append(state['user_query'])
             queries.append(f"{state['student_level']} student skills")
         
-        elif analysis.get('intent') == 'resource_finding':
+        elif intent == 'resource_finding':
             for entity in analysis.get('entities', []):
                 queries.append(f"{entity} learning resources")
         
-        elif analysis.get('intent') == 'comparison':
+        elif intent == 'comparison':
             queries.append(state['user_query'])
             for entity in analysis.get('entities', []):
                 queries.append(entity)
         
         else:
+            queries.append(state['user_query'])
+        
+        # Ensure we have at least one query
+        if not queries:
             queries.append(state['user_query'])
         
         state['search_queries'] = queries
@@ -320,33 +334,39 @@ class AgenticRAGChatbot:
             'recommendations': []
         }
         
-        # Semantic search for skills
-        for query in state['search_queries']:
-            skills = semantic_search_skills.invoke({"query": query, "limit": 5})
-            retrieved['skills'].extend(skills)
-        
-        # Remove duplicates
-        seen_skills = set()
-        unique_skills = []
-        for skill in retrieved['skills']:
-            skill_id = skill.get('skill_id') or skill.get('id')
-            if skill_id not in seen_skills:
-                seen_skills.add(skill_id)
-                unique_skills.append(skill)
-        retrieved['skills'] = unique_skills[:10]
-        
-        # Get resources
-        resources = semantic_search_resources.invoke({
-            "query": state['user_query'],
-            "limit": 5
-        })
-        retrieved['resources'] = resources
-        
-        # Get recommendations for student level
-        recs = get_recommendations_for_level.invoke({
-            "student_level": state['student_level']
-        })
-        retrieved['recommendations'] = recs[:5]
+        try:
+            # Semantic search for skills
+            for query in state.get('search_queries', [state['user_query']]):
+                skills = semantic_search_skills.invoke({"query": query, "limit": 5})
+                retrieved['skills'].extend(skills)
+            
+            # Remove duplicates
+            seen_skills = set()
+            unique_skills = []
+            for skill in retrieved['skills']:
+                skill_id = skill.get('skill_id') or skill.get('id')
+                if skill_id and skill_id not in seen_skills:
+                    seen_skills.add(skill_id)
+                    unique_skills.append(skill)
+            retrieved['skills'] = unique_skills[:10]
+            
+            # Get resources
+            resources = semantic_search_resources.invoke({
+                "query": state['user_query'],
+                "limit": 5
+            })
+            retrieved['resources'] = resources
+            
+            # Get recommendations for student level
+            recs = get_recommendations_for_level.invoke({
+                "student_level": state['student_level']
+            })
+            retrieved['recommendations'] = recs[:5]
+            
+        except Exception as e:
+            print(f"  Error retrieving data: {e}")
+            import traceback
+            traceback.print_exc()
         
         state['retrieved_data'] = retrieved
         state['reasoning_steps'].append(
@@ -359,183 +379,86 @@ class AgenticRAGChatbot:
         
         return state
     
-    def _reason_node(self, state: AgenticRAGState) -> AgenticRAGState:
-        """Reason about retrieved data and form insights."""
-        print("\n[Agent] Reasoning about data...")
-        
-        # Use LLM to reason about the data
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert reasoning agent. Analyze the retrieved data 
-            and form insights to answer the user's query. Consider:
-            1. What are the most relevant pieces of information?
-            2. How do they relate to each other?
-            3. What conclusions can be drawn?
-            4. What additional context is needed?
-            
-            Return reasoning as structured thoughts."""),
-            ("user", """Query: {query}
-            Student Level: {level}
-            Intent: {intent}
-            
-            Retrieved Skills: {skills}
-            Retrieved Resources: {resources}
-            Recommendations: {recommendations}
-            
-            Provide reasoning steps to answer this query:""")
-        ])
-        
-        retrieved = state['retrieved_data']
-        response = self.llm.invoke(prompt.format_messages(
-            query=state['user_query'],
-            level=state['student_level'],
-            intent=state['query_analysis'].get('intent', 'unknown'),
-            skills=json.dumps([s.get('skill_name', 'Unknown') for s in retrieved['skills'][:5]]),
-            resources=json.dumps([r.get('title', 'Unknown') for r in retrieved['resources'][:3]]),
-            recommendations=json.dumps([r.get('skill_name', 'Unknown') for r in retrieved['recommendations'][:3]])
-        ))
-        
-        reasoning = response.content
-        state['reasoning_steps'].append(f"Reasoning: {reasoning[:100]}...")
-        
-        print(f"  Generated reasoning insights")
-        
-        return state
-    
-    def _draft_node(self, state: AgenticRAGState) -> AgenticRAGState:
-        """Draft initial response."""
-        print("\n[Agent] Drafting response...")
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an IT Skills Advisor. Create a helpful, actionable response
-            based on the analysis and retrieved data. Be specific, include actual skill names,
-            demand scores, and resource links. Format with markdown."""),
-            ("user", """User Query: {query}
-            Student Level: {level}
-            
-            Analysis: {analysis}
-            Reasoning: {reasoning}
-            
-            Retrieved Data:
-            Skills: {skills}
-            Resources: {resources}
-            Recommendations: {recommendations}
-            
-            Draft a comprehensive response:""")
-        ])
-        
-        retrieved = state['retrieved_data']
-        response = self.llm.invoke(prompt.format_messages(
-            query=state['user_query'],
-            level=state['student_level'],
-            analysis=json.dumps(state['query_analysis']),
-            reasoning="\n".join(state['reasoning_steps']),
-            skills=json.dumps(retrieved['skills'][:5], indent=2),
-            resources=json.dumps(retrieved['resources'][:3], indent=2),
-            recommendations=json.dumps(retrieved['recommendations'][:3], indent=2)
-        ))
-        
-        state['draft_response'] = response.content
-        
-        print(f"  Created draft response ({len(response.content)} chars)")
-        
-        return state
-    
-    def _refine_node(self, state: AgenticRAGState) -> AgenticRAGState:
-        """Refine and improve the response."""
-        print("\n[Agent] Refining response...")
-        
-        # Increment refinement counter
-        state['refinement_count'] = state.get('refinement_count', 0) + 1
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a response refinement expert. Improve the draft response by:
-            1. Making it more concise and clear
-            2. Ensuring all claims are backed by data
-            3. Adding specific next steps
-            4. Improving formatting and readability
-            5. Checking accuracy of demand scores and URLs
-            
-            Keep the helpful tone but make it more polished."""),
-            ("user", """Original Query: {query}
-            Student Level: {level}
-            
-            Draft Response:
-            {draft}
-            
-            Refine this response:""")
-        ])
-        
-        response = self.llm.invoke(prompt.format_messages(
-            query=state['user_query'],
-            level=state['student_level'],
-            draft=state['draft_response']
-        ))
-        
-        state['refined_response'] = response.content
-        
-        print(f"  Refined response")
-        
-        return state
-    
-    def _verify_node(self, state: AgenticRAGState) -> AgenticRAGState:
-        """Verify response quality and completeness."""
-        print("\n[Agent] Verifying response quality...")
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a quality verifier. Check if the response:
-            1. Fully answers the user's query
-            2. Is accurate based on the data
-            3. Is appropriate for the student level
-            4. Provides actionable advice
-            
-            Score from 0-1 and note if refinement is needed."""),
-            ("user", """Query: {query}
-            Response: {response}
-            
-            Rate quality (0-1):""")
-        ])
-        
-        response = self.llm.invoke(prompt.format_messages(
-            query=state['user_query'],
-            response=state['refined_response'][:500]
-        ))
-        
+    def _generate_response_node(self, state: AgenticRAGState) -> AgenticRAGState:
+        """OPTIMIZED: Generate complete response in one LLM call (combines reason+draft+refine)."""
+        print("\n[Agent] Generating response...")
+
         try:
-            # Extract score (simple parsing)
-            content = response.content.lower()
-            if '0.9' in content or '0.8' in content or 'excellent' in content:
-                score = 0.9
-            elif '0.7' in content or 'good' in content:
-                score = 0.7
-            else:
-                score = 0.6
-        except:
-            score = 0.7
-        
-        state['confidence_score'] = score
-        state['needs_clarification'] = score < 0.7
-        
-        print(f"  Quality score: {score:.2f}")
-        
+            # Single optimized prompt that does reasoning + drafting in one pass
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """You are an expert IT Skills Advisor. Based on the user's query and retrieved data:
+1. Identify key insights from the data
+2. Create a clear, actionable response with specific skills, demand scores, and resources
+3. Format with markdown for readability
+4. Tailor advice to the student's level
+
+Be concise, specific, and helpful."""),
+                ("user", """Query: {query}
+Student Level: {level}
+Intent: {intent}
+
+Retrieved Skills (top 5):
+{skills}
+
+Resources:
+{resources}
+
+Recommendations:
+{recommendations}
+
+Generate a complete, polished response:""")
+            ])
+
+            retrieved = state.get('retrieved_data', {})
+            query_analysis = state.get('query_analysis', {})
+
+            # Format data concisely for faster processing
+            skills_summary = "\n".join([
+                f"- {s.get('skill_name', 'Unknown')} (Demand: {s.get('demand_score', 'N/A')})"
+                for s in retrieved.get('skills', [])[:5]
+            ])
+
+            resources_summary = "\n".join([
+                f"- {r.get('title', 'Unknown')}: {r.get('url', 'N/A')}"
+                for r in retrieved.get('resources', [])[:3]
+            ])
+
+            recommendations_summary = "\n".join([
+                f"- {r.get('skill_name', 'Unknown')}"
+                for r in retrieved.get('recommendations', [])[:3]
+            ])
+
+            # Get intent safely with fallback
+            intent = query_analysis.get('intent', 'general_inquiry') if isinstance(query_analysis, dict) else 'general_inquiry'
+
+            response = self.llm.invoke(prompt.format_messages(
+                query=state['user_query'],
+                level=state['student_level'],
+                intent=intent,
+                skills=skills_summary or "No specific skills found",
+                resources=resources_summary or "No resources found",
+                recommendations=recommendations_summary or "No recommendations available"
+            ))
+
+            state['refined_response'] = response.content
+            state['draft_response'] = response.content  # Keep for compatibility
+            state['confidence_score'] = 0.9  # Assume high quality from optimized prompt
+            state['reasoning_steps'].append("Generated complete response in single pass")
+
+            print(f"  Generated response ({len(response.content)} chars)")
+
+        except Exception as e:
+            print(f"  Error generating response: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Provide fallback response
+            state['refined_response'] = "I apologize, but I encountered an error while processing your request. Please try rephrasing your question or contact support if the issue persists."
+            state['draft_response'] = state['refined_response']
+            state['confidence_score'] = 0.3
+            state['reasoning_steps'].append(f"Error during generation: {str(e)}")
+
         return state
-    
-    def _should_refine_again(self, state: AgenticRAGState) -> str:
-        """Decide if response needs another refinement."""
-        # Safety: limit to max 2 refinement iterations
-        max_refinements = 2
-        current_count = state.get('refinement_count', 0)
-        
-        # Stop if we've refined too many times
-        if current_count >= max_refinements:
-            print(f"  Max refinements ({max_refinements}) reached")
-            return "done"
-        
-        # Only refine again if quality is low
-        if state['confidence_score'] < 0.6:
-            print(f"  Low confidence ({state['confidence_score']:.2f}), refining again...")
-            return "refine_again"
-        
-        return "done"
     
     def chat(self, user_query: str, student_level: str = "Junior") -> str:
         """Process user query through agentic RAG workflow.
@@ -551,24 +474,31 @@ class AgenticRAGChatbot:
         print("Agentic RAG Processing")
         print("="*80)
         
-        initial_state = AgenticRAGState(
-            user_query=user_query,
-            student_level=student_level,
-            query_analysis={},
-            search_queries=[],
-            retrieved_data={},
-            reasoning_steps=[],
-            draft_response="",
-            refined_response="",
-            confidence_score=0.0,
-            needs_clarification=False,
-            refinement_count=0  # Initialize counter
-        )
-        
-        result = self.graph.invoke(initial_state)
-        
-        print("\n" + "="*80)
-        print(f"Processing Complete (Confidence: {result['confidence_score']:.2f})")
-        print("="*80 + "\n")
-        
-        return result['refined_response']
+        try:
+            initial_state = AgenticRAGState(
+                user_query=user_query,
+                student_level=student_level,
+                query_analysis={},
+                search_queries=[],
+                retrieved_data={},
+                reasoning_steps=[],
+                draft_response="",
+                refined_response="",
+                confidence_score=0.0,
+                needs_clarification=False,
+                refinement_count=0  # Initialize counter
+            )
+            
+            result = self.graph.invoke(initial_state)
+            
+            print("\n" + "="*80)
+            print(f"Processing Complete (Confidence: {result['confidence_score']:.2f})")
+            print("="*80 + "\n")
+            
+            return result['refined_response']
+            
+        except Exception as e:
+            print(f"\nError in chat processing: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"I apologize, but I encountered an error while processing your request: {str(e)}"

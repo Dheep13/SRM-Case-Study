@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiCalendar, FiClock, FiUsers, FiBookOpen, FiVideo, FiFileText, FiLink } from 'react-icons/fi';
+import { FiCalendar, FiClock, FiUsers, FiBookOpen, FiVideo, FiFileText, FiLink, FiPlus } from 'react-icons/fi';
 
 const TodaysClass = () => {
   const [todayContent, setTodayContent] = useState([

@@ -4,8 +4,8 @@ from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from db_integration.supabase_client import SupabaseManager
 import config
 import json

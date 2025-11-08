@@ -1,7 +1,7 @@
 """Simplified chatbot for debugging."""
 
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 import config
 import json
 

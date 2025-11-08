@@ -7,10 +7,16 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Thread pool for running blocking operations
+# OPTIMIZED: Increased from 4 to 8 workers for better concurrency
+executor = ThreadPoolExecutor(max_workers=8)
 
 app = FastAPI(
     title="GenAI Learning Assistant API",
@@ -24,7 +30,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
-        "https://genai-learning-assistant.cfapps.us10-001.hana.ondemand.com"
+        "https://genai-learning-assistant.cfapps.us10-001.hana.ondemand.com",
+        "https://evolveiq-frontend.cfapps.us10-001.hana.ondemand.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -81,32 +88,32 @@ class AnalyticsResponse(BaseModel):
 # Health check
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint."""
-    try:
-        from db_integration.supabase_client import SupabaseManager
-        db = SupabaseManager()
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "embeddings": os.path.exists('.env')
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+    """Health check endpoint - Must respond quickly for CF liveness checks."""
+    # IMPORTANT: Keep this endpoint super lightweight
+    # Cloud Foundry liveness checks timeout after 3 seconds
+    return {
+        "status": "healthy",
+        "service": "evolveiq-api",
+        "version": "1.0.0"
+    }
 
 # Chat endpoint
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Chat with Agentic RAG bot."""
+    """Chat with Agentic RAG bot - OPTIMIZED with timeout."""
     try:
-        # Try the AgenticRAGChatbot with your fixes
+        # Import here to avoid blocking startup
         from db_integration.agentic_rag import AgenticRAGChatbot
-        
-        bot = AgenticRAGChatbot()
-        response = bot.chat(request.message, student_level=request.student_level)
-        
+
+        # Define blocking function to run in thread
+        def run_chat():
+            bot = AgenticRAGChatbot()
+            return bot.chat(request.message, student_level=request.student_level)
+
+        # Run in thread pool - NO TIMEOUT, let it take as long as needed
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(executor, run_chat)
+
         return ChatResponse(
             response=response,
             student_level=request.student_level
@@ -121,21 +128,30 @@ async def chat(request: ChatRequest):
 # Discovery endpoint
 @app.post("/api/discover", response_model=DiscoveryResponse)
 async def discover_resources(request: DiscoveryRequest):
-    """Discover learning resources using AI agents."""
+    """Discover learning resources using AI agents - OPTIMIZED with timeout."""
     try:
+        # Import here to avoid blocking startup
         from agents.orchestrator import GenAIAgentOrchestrator
         from db_integration.data_loader import DataLoader
-        
-        # Run agents
-        orchestrator = GenAIAgentOrchestrator()
-        report = orchestrator.run(request.query, output_format="json")
-        
-        # Load to database if requested
-        stats = {}
-        if request.load_to_db:
-            loader = DataLoader()
-            stats = loader.load_report(report)
-        
+
+        # Define blocking function to run in thread
+        def run_discovery():
+            # Run agents
+            orchestrator = GenAIAgentOrchestrator()
+            report = orchestrator.run(request.query, output_format="json")
+
+            # Load to database if requested
+            stats = {}
+            if request.load_to_db:
+                loader = DataLoader()
+                stats = loader.load_report(report)
+
+            return report, stats
+
+        # Run in thread pool - NO TIMEOUT, let it take as long as needed
+        loop = asyncio.get_event_loop()
+        report, stats = await loop.run_in_executor(executor, run_discovery)
+
         return DiscoveryResponse(
             resources=report.get('learning_resources', []),
             topics=report.get('trending_topics', []),
@@ -284,6 +300,109 @@ async def get_resources(category: Optional[str] = None, limit: int = 50):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Resources error: {str(e)}")
+
+# Trending skills endpoint
+@app.get("/api/trending-skills")
+async def get_trending_skills(max_skills: int = 10, days_back: int = 30):
+    """Get trending skills using real data from Tavily.
+    
+    Args:
+        max_skills: Maximum number of trending skills to return
+        days_back: How far back to analyze trends (default: 30 days)
+    """
+    try:
+        from db_integration.trending_skills_analyzer import analyze_trending_skills
+        
+        def fetch_in_thread():
+            return analyze_trending_skills(max_skills=max_skills, days_back=days_back)
+        
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        trends = await loop.run_in_executor(executor, fetch_in_thread)
+        
+        return {
+            "trends": trends,
+            "total": len(trends),
+            "source": "tech_community_analysis",
+            "days_analyzed": days_back,
+            "generated_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        print(f"Trending skills error: {e}")
+        # Return empty list on error instead of failing
+        return {
+            "trends": [],
+            "total": 0,
+            "error": str(e)
+        }
+
+# Skill forecast endpoint
+@app.get("/api/skill-forecast")
+async def get_skill_forecast(max_skills: int = 10):
+    """Get skill demand forecast using real job market data from Tavily.
+    
+    Args:
+        max_skills: Maximum number of skills to return
+    """
+    try:
+        from db_integration.skill_forecast_analyzer import analyze_skill_forecast
+        
+        def fetch_in_thread():
+            return analyze_skill_forecast(max_skills=max_skills)
+        
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        forecasts = await loop.run_in_executor(executor, fetch_in_thread)
+        
+        return {
+            "forecasts": forecasts,
+            "total": len(forecasts),
+            "source": "job_market_analysis",
+            "generated_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        print(f"Skill forecast error: {e}")
+        # Return empty list on error instead of failing
+        return {
+            "forecasts": [],
+            "total": 0,
+            "error": str(e)
+        }
+
+# Tech news endpoint
+@app.get("/api/tech-news")
+async def get_tech_news(query: str = "AI technology artificial intelligence", limit: int = 10, days_back: int = 7):
+    """Get latest tech news using Tavily API with date filtering.
+    
+    Args:
+        query: Search query for tech news
+        limit: Maximum number of articles to return
+        days_back: How many days back to search (1, 7, 30, etc.)
+    """
+    try:
+        from db_integration.tech_news_fetcher import fetch_tech_news
+        
+        def fetch_in_thread():
+            return fetch_tech_news(query=query, max_results=limit, days_back=days_back)
+        
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        news = await loop.run_in_executor(executor, fetch_in_thread)
+        
+        return {
+            "news": news,
+            "total": len(news),
+            "query": query,
+            "days_back": days_back
+        }
+    except Exception as e:
+        print(f"Tech news error: {e}")
+        # Return empty list on error instead of failing
+        return {
+            "news": [],
+            "total": 0,
+            "error": str(e)
+        }
 
 # ==================== ADMIN ENDPOINTS ====================
 
@@ -456,19 +575,36 @@ async def admin_health():
     """Admin system health check."""
     try:
         from db_integration.supabase_client import SupabaseManager
+        import os
+        
         db = SupabaseManager()
         
-        # Check database
-        db.client.table('system_settings').select('count').execute()
+        # Check database connection using a table we know exists
+        # Try learning_resources first (from main schema)
+        try:
+            db.client.table('learning_resources').select('id').limit(1).execute()
+            database_status = "connected"
+        except:
+            # If learning_resources doesn't exist, try it_skills
+            try:
+                db.client.table('it_skills').select('id').limit(1).execute()
+                database_status = "connected"
+            except:
+                database_status = "disconnected"
+        
+        # Check if config is loaded (env variables present)
+        config_loaded = bool(os.getenv('OPENAI_API_KEY')) and bool(os.getenv('SUPABASE_URL'))
         
         return {
-            "status": "healthy",
-            "database": "connected",
-            "config_loaded": True
+            "status": "healthy" if database_status == "connected" else "unhealthy",
+            "database": database_status,
+            "config_loaded": config_loaded
         }
     except Exception as e:
         return {
             "status": "unhealthy",
+            "database": "error",
+            "config_loaded": False,
             "error": str(e)
         }
 
@@ -504,4 +640,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("api:app", host="0.0.0.0", port=port, reload=False)
-

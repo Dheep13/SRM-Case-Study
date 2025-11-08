@@ -21,22 +21,27 @@ function App() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [health, setHealth] = useState(null);
 
+  // Get API base URL from environment
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
+                       (typeof window !== 'undefined' && window.ENV?.API_BASE_URL) ||
+                       'http://localhost:8000';
+
   // Fetch health status
   useEffect(() => {
     const fetchHealth = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/health');
+        const response = await fetch(`${API_BASE_URL}/api/health`);
         const data = await response.json();
         setHealth(data);
       } catch (error) {
         setHealth({ status: 'offline' });
       }
     };
-    
+
     fetchHealth();
     const interval = setInterval(fetchHealth, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [API_BASE_URL]);
 
   // Allow easy admin toggle for development (double-click logo)
   const [logoClickCount, setLogoClickCount] = useState(0);
