@@ -1,0 +1,9 @@
+root: dist
+location_include: /*
+directory: dist
+pushstate: enabled
+http_strict_transport_security: true
+force_https: true
+
+
+

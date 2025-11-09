@@ -1,0 +1,46 @@
+---
+applications:
+# Backend API Application
+- name: evolveiq-api
+  # Resource allocation
+  memory: 1G
+  disk_quota: 2G
+  instances: 1
+  
+  # Buildpack configuration
+  buildpacks:
+    - python_buildpack
+  stack: cflinuxfs4
+  
+  # Application configuration
+  path: .
+  command: uvicorn api:app --host 0.0.0.0 --port $PORT
+  
+  # Environment variables (REQUIRED - Set these!)
+  env:
+    PYTHON_VERSION: 3.11
+    # OpenAI Configuration
+    # OPENAI_API_KEY: your_openai_key  # Set via cf set-env
+    # LLM_MODEL: gpt-4o-mini
+    # LLM_TEMPERATURE: 0.7
+    
+    # Database Configuration
+    # SUPABASE_URL: https://your-project.supabase.co  # Set via cf set-env
+    # SUPABASE_KEY: your_supabase_key  # Set via cf set-env
+    
+    # API Keys for Agents
+    # TAVILY_API_KEY: your_tavily_key  # Set via cf set-env
+    # GITHUB_TOKEN: your_github_token  # Set via cf set-env (optional)
+  
+  # Services (if using CF marketplace services)
+  # services:
+  #   - evolveiq-postgres  # If using CF PostgreSQL service
+  
+  # Routing
+  # routes:
+  #   - route: evolveiq-api.cfapps.io
+  
+  # Health check configuration
+  health-check-type: http
+  health-check-http-endpoint: /api/health
+  timeout: 180

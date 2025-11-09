@@ -4,7 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GenAI Learning Assistant</title>
+    <title>EvolveIQ - AI Driven MultiAgent Framework</title>
+    <script>
+      // Inject environment variables before app loads
+      window.ENV = window.ENV || {};
+      window.ENV.API_BASE_URL = window.ENV.API_BASE_URL || 'http://localhost:8000';
+    </script>
   </head>
   <body>
     <div id="root"></div>

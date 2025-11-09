@@ -1,0 +1,17 @@
+---
+applications:
+# Frontend Application for Cloud Foundry
+- name: evolveiq-frontend
+  memory: 256M
+  disk_quota: 512M
+  instances: 1
+  buildpacks:
+    - staticfile_buildpack
+  stack: cflinuxfs4
+  path: dist
+  routes:
+    - route: evolveiq-frontend.cfapps.us10-001.hana.ondemand.com
+  env:
+    FORCE_HTTPS: true
+  # Note: API URL must be set during build (see deployment steps)
+

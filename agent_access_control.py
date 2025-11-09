@@ -177,35 +177,40 @@ class AgentAccessController:
     
     def check_access(self, agent_name: str, platform: str, endpoint: str, content_type: str = None) -> bool:
         """Check if an agent can access a specific platform endpoint."""
-        # Log the access attempt
-        self._log_access_attempt(agent_name, platform, endpoint, content_type)
-        
         # Check if agent is enabled
         if agent_name not in self.agents or not self.agents[agent_name].enabled:
+            self._log_access_attempt(agent_name, platform, endpoint, content_type, False)
             return False
         
         # Check if platform is allowed for this agent
         if platform not in self.agents[agent_name].allowed_platforms:
+            self._log_access_attempt(agent_name, platform, endpoint, content_type, False)
             return False
         
         # Check platform access level
         if platform not in self.platforms:
+            self._log_access_attempt(agent_name, platform, endpoint, content_type, False)
             return False
         
         platform_config = self.platforms[platform]
         
         if platform_config.access_level == AccessLevel.BLOCKED:
+            self._log_access_attempt(agent_name, platform, endpoint, content_type, False)
             return False
         
         # Check if endpoint is allowed
         if endpoint not in platform_config.api_endpoints:
+            self._log_access_attempt(agent_name, platform, endpoint, content_type, False)
             return False
         
         # Check content type restrictions
         if content_type and platform_config.allowed_content_types:
             if content_type not in platform_config.allowed_content_types:
+                self._log_access_attempt(agent_name, platform, endpoint, content_type, False)
                 return False
         
+        # Log successful access
+        self._log_access_attempt(agent_name, platform, endpoint, content_type, True)
         return True
     
     def get_allowed_platforms(self, agent_name: str) -> List[str]:
@@ -251,7 +256,7 @@ class AgentAccessController:
         """Get audit log of access attempts and configuration changes."""
         return self.audit_log[-limit:]
     
-    def _log_access_attempt(self, agent_name: str, platform: str, endpoint: str, content_type: str):
+    def _log_access_attempt(self, agent_name: str, platform: str, endpoint: str, content_type: str, allowed: bool):
         """Log an access attempt."""
         self.audit_log.append({
             "timestamp": datetime.now().isoformat(),
@@ -260,7 +265,7 @@ class AgentAccessController:
             "platform": platform,
             "endpoint": endpoint,
             "content_type": content_type,
-            "allowed": self.check_access(agent_name, platform, endpoint, content_type)
+            "allowed": allowed
         })
     
     def _log_config_change(self, description: str):

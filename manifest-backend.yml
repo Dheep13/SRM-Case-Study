@@ -1,0 +1,37 @@
+---
+applications:
+# Backend API Application for Cloud Foundry
+- name: evolveiq-api
+  memory: 1G
+  disk_quota: 2G
+  instances: 1
+  buildpacks:
+    - python_buildpack
+  stack: cflinuxfs4
+  path: .
+  command: uvicorn api:app --host 0.0.0.0 --port $PORT --workers 2
+  env:
+    PYTHON_VERSION: 3.11
+    PYTHONUNBUFFERED: 1
+    # Database - Use Supabase (easier) or CF PostgreSQL service
+    USE_SUPABASE: ${USE_SUPABASE:-true}
+    # If using Docker PostgreSQL, set these:
+    # USE_SUPABASE: false
+    # DB_HOST: <postgres-service-host>
+    # DB_PORT: 5432
+    # DB_NAME: evolveiq_db
+    # DB_USER: evolveiq
+    # DB_PASSWORD: ${DB_PASSWORD}
+    # CORS - Update with your frontend URL
+    CORS_ORIGINS: ${CORS_ORIGINS:-https://evolveiq-frontend.cfapps.us10-001.hana.ondemand.com}
+    # API Keys - Set via cf set-env (see deployment steps)
+    # OPENAI_API_KEY: set_via_cf_set_env
+    # SUPABASE_URL: set_via_cf_set_env
+    # SUPABASE_KEY: set_via_cf_set_env
+    # TAVILY_API_KEY: set_via_cf_set_env
+  routes:
+    - route: evolveiq-api.cfapps.us10-001.hana.ondemand.com
+  health-check-type: http
+  health-check-http-endpoint: /api/health
+  timeout: 180
+

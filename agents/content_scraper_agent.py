@@ -5,8 +5,8 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 import config

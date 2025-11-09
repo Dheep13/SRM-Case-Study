@@ -4,8 +4,8 @@ from typing import List, Dict, Any, TypedDict
 from datetime import datetime, timedelta
 import requests
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 import config
 
@@ -386,10 +386,10 @@ class TrendAnalysisAgent:
     def _aggregate_node(self, state: TrendState) -> TrendState:
         """Aggregate trends from all sources."""
         try:
-            aggregated = aggregate_trends.invoke(
-                state.get('github_trends', []),
-                state.get('linkedin_trends', [])
-            )
+            aggregated = aggregate_trends.invoke({
+                'github_trends': state.get('github_trends', []),
+                'linkedin_trends': state.get('linkedin_trends', [])
+            })
             state['aggregated_trends'] = aggregated
         except Exception as e:
             state['error'] = f"Trend aggregation failed: {str(e)}"

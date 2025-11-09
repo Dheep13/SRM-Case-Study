@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Set
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 import config
 import re
 

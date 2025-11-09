@@ -1,0 +1,27 @@
+@echo off
+REM Cloud Foundry Environment Variables Setup
+REM Copy this file to set_cf_env.bat and fill in your actual values
+
+REM OpenAI Configuration
+cf set-env evolveiq-api OPENAI_API_KEY "your-openai-api-key-here"
+cf set-env evolveiq-api LLM_MODEL "gpt-4-turbo"
+cf set-env evolveiq-api EMBEDDING_MODEL "text-embedding-ada-002"
+
+REM Supabase Configuration
+cf set-env evolveiq-api SUPABASE_URL "your-supabase-url-here"
+cf set-env evolveiq-api SUPABASE_KEY "your-supabase-key-here"
+
+REM Tavily API (for web search)
+cf set-env evolveiq-api TAVILY_API_KEY "your-tavily-api-key-here"
+
+REM GitHub Token (for trending repos)
+cf set-env evolveiq-api GITHUB_TOKEN "your-github-token-here"
+
+REM Application Configuration
+cf set-env evolveiq-api MAX_SEARCH_RESULTS "10"
+cf set-env evolveiq-api STUDENT_LEVEL "beginner"
+
+echo Environment variables set for evolveiq-api
+echo Please restart the application for changes to take effect
+pause
+

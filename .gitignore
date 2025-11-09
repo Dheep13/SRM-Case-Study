@@ -1,14 +1,25 @@
 # Environment variables and secrets
 .env
 .env.local
+.env.development
 .env.production
 .env.staging
+.env.test
 *.env
+.env.*
+**/.env
+**/.env.*
+**/env-config.js
+frontend/public/env-config.js
 
 # API Keys and sensitive data
 config.json
 secrets.json
 credentials.json
+set_cf_env.bat
+set_env_vars.bat
+**/set_cf_env.bat
+**/set_env_vars.bat
 
 # Python
 __pycache__/
