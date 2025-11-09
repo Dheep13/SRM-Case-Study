@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+outputs/charts/*
+!outputs/charts/.gitkeep
+*.log
+*.bat
+*.sh
+
+# Cloud Foundry (no longer needed)
+manifest.yml
+Procfile
+.cfignore
+
+# Documentation
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# Environment files (use docker-compose env_file instead)
+.env
+.env.local
+
+# Static files (will be generated)
+static/*
+!static/.gitkeep
+
+# Test files
+test_*.py
+*_test.py
+
+# Archive
+archive/
+

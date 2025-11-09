@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
 import asyncio
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
@@ -25,20 +26,48 @@ app = FastAPI(
 )
 
 # CORS middleware for React frontend
+# For production, add your public domain to allow_origins
+# Example: "https://yourdomain.com", "https://www.yourdomain.com"
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
+# Always allow localhost for development
+default_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://genai-learning-assistant.cfapps.us10-001.hana.ondemand.com",
+    "https://evolveiq-frontend.cfapps.us10-001.hana.ondemand.com"
+]
+# Combine default and custom origins, filter out empty strings
+all_origins = default_origins + [origin.strip() for origin in CORS_ORIGINS if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://genai-learning-assistant.cfapps.us10-001.hana.ondemand.com",
-        "https://evolveiq-frontend.cfapps.us10-001.hana.ondemand.com"
-    ],
+    allow_origins=all_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Pydantic models
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    success: bool
+    token: Optional[str] = None
+    user: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    student_level: str = "Junior"
+
+class VerifyTokenRequest(BaseModel):
+    token: str
+
 class ChatRequest(BaseModel):
     message: str
     student_level: str = "Junior"
@@ -96,6 +125,235 @@ async def health_check():
         "service": "evolveiq-api",
         "version": "1.0.0"
     }
+
+# ==================== AUTHENTICATION ENDPOINTS ====================
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """Login endpoint - verify username and password."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        import secrets
+        from datetime import datetime, timedelta
+        
+        db = SupabaseManager()
+        
+        # Find user by username
+        result = db.client.table('users').select('*').eq('username', request.username).execute()
+        
+        if not result.data or len(result.data) == 0:
+            return LoginResponse(
+                success=False,
+                message="Invalid username or password"
+            )
+        
+        user = result.data[0]
+        
+        # Verify password (simple comparison for now - in production use bcrypt)
+        if user['password_hash'] != request.password:
+            return LoginResponse(
+                success=False,
+                message="Invalid username or password"
+            )
+        
+        # Check if user is active
+        if not user.get('is_active', True):
+            return LoginResponse(
+                success=False,
+                message="Account is disabled"
+            )
+        
+        # Generate session token
+        session_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now() + timedelta(days=7)  # 7 day session
+        
+        # Create session
+        db.client.table('user_sessions').insert({
+            'user_id': user['id'],
+            'session_token': session_token,
+            'expires_at': expires_at.isoformat()
+        }).execute()
+        
+        # Update last login
+        db.client.table('users').update({
+            'last_login': datetime.now().isoformat()
+        }).eq('id', user['id']).execute()
+        
+        # Return user info (without password)
+        user_info = {
+            'id': str(user['id']),
+            'username': user['username'],
+            'email': user.get('email'),
+            'full_name': user.get('full_name'),
+            'student_level': user.get('student_level', 'Junior')
+        }
+        
+        return LoginResponse(
+            success=True,
+            token=session_token,
+            user=user_info
+        )
+    except Exception as e:
+        print(f"Login error: {e}")
+        return LoginResponse(
+            success=False,
+            message=f"Login failed: {str(e)}"
+        )
+
+@app.post("/api/auth/verify")
+async def verify_token(request: VerifyTokenRequest):
+    """Verify session token and return user info."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        from datetime import datetime
+        
+        db = SupabaseManager()
+        
+        # Find session
+        result = db.client.table('user_sessions').select('*').eq('session_token', request.token).execute()
+        
+        if not result.data or len(result.data) == 0:
+            return {"valid": False, "message": "Invalid token"}
+        
+        session = result.data[0]
+        
+        # Check if expired
+        expires_at_str = session['expires_at']
+        if isinstance(expires_at_str, str):
+            # Handle ISO format strings
+            expires_at_str = expires_at_str.replace('Z', '+00:00')
+            expires_at = datetime.fromisoformat(expires_at_str)
+        else:
+            expires_at = expires_at_str
+        
+        # Compare with current time (handle timezone-aware datetime)
+        now = datetime.now(expires_at.tzinfo) if hasattr(expires_at, 'tzinfo') and expires_at.tzinfo else datetime.now()
+        if expires_at < now:
+            return {"valid": False, "message": "Token expired"}
+        
+        # Get user info
+        user_result = db.client.table('users').select('*').eq('id', session['user_id']).execute()
+        
+        if not user_result.data or len(user_result.data) == 0:
+            return {"valid": False, "message": "User not found"}
+        
+        user = user_result.data[0]
+        
+        # Update last activity
+        db.client.table('user_sessions').update({
+            'last_activity': datetime.now().isoformat()
+        }).eq('id', session['id']).execute()
+        
+        # Return user info (without password)
+        user_info = {
+            'id': str(user.get('id')),
+            'username': user.get('username'),
+            'email': user.get('email'),
+            'full_name': user.get('full_name'),
+            'student_level': user.get('student_level', 'Junior')
+        }
+        
+        return {
+            "valid": True,
+            "user": user_info
+        }
+    except Exception as e:
+        import traceback
+        print(f"Verify token error: {e}")
+        print(traceback.format_exc())
+        return {"valid": False, "message": str(e)}
+
+@app.post("/api/auth/register", response_model=LoginResponse)
+async def register(request: RegisterRequest):
+    """Register a new user."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        import secrets
+        from datetime import datetime, timedelta
+        
+        db = SupabaseManager()
+        
+        # Check if username already exists
+        existing = db.client.table('users').select('id').eq('username', request.username).execute()
+        if existing.data:
+            return LoginResponse(
+                success=False,
+                message="Username already exists"
+            )
+        
+        # Create user (password stored as-is for now - in production use bcrypt)
+        user_data = {
+            'username': request.username,
+            'password_hash': request.password,  # In production, hash this
+            'email': request.email,
+            'full_name': request.full_name,
+            'student_level': request.student_level,
+            'is_active': True
+        }
+        
+        result = db.client.table('users').insert(user_data).execute()
+        
+        if not result.data:
+            return LoginResponse(
+                success=False,
+                message="Registration failed"
+            )
+        
+        user = result.data[0]
+        
+        # Generate session token
+        session_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now() + timedelta(days=7)
+        
+        # Create session
+        db.client.table('user_sessions').insert({
+            'user_id': user['id'],
+            'session_token': session_token,
+            'expires_at': expires_at.isoformat()
+        }).execute()
+        
+        # Return user info
+        user_info = {
+            'id': str(user['id']),
+            'username': user['username'],
+            'email': user.get('email'),
+            'full_name': user.get('full_name'),
+            'student_level': user.get('student_level', 'Junior')
+        }
+        
+        return LoginResponse(
+            success=True,
+            token=session_token,
+            user=user_info
+        )
+    except Exception as e:
+        print(f"Registration error: {e}")
+        return LoginResponse(
+            success=False,
+            message=f"Registration failed: {str(e)}"
+        )
+
+@app.post("/api/auth/logout")
+async def logout(request: Dict[str, Any]):
+    """Logout - invalidate session token."""
+    try:
+        from db_integration.supabase_client import SupabaseManager
+        
+        db = SupabaseManager()
+        token = request.get('token')
+        
+        if not token:
+            return {"success": False, "message": "Token required"}
+        
+        # Delete session (ignore if already deleted)
+        try:
+            db.client.table('user_sessions').delete().eq('session_token', token).execute()
+        except Exception:
+            pass  # Session might already be deleted
+        
+        return {"success": True, "message": "Logged out successfully"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 # Chat endpoint
 @app.post("/api/chat", response_model=ChatResponse)

@@ -43,6 +43,30 @@ export const api = {
   trendingSkills: (maxSkills = 10, daysBack = 30) => 
     fetch(`${API_BASE_URL}/api/trending-skills?max_skills=${maxSkills}&days_back=${daysBack}`),
 
+  // Authentication endpoints
+  auth: {
+    login: (data) => fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+    register: (data) => fetch(`${API_BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+    verify: (data) => fetch(`${API_BASE_URL}/api/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+    logout: (data) => fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+  },
+
   // Admin endpoints
   admin: {
     health: () => fetch(`${API_BASE_URL}/api/admin/health`),

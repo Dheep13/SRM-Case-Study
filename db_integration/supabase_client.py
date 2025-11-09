@@ -8,22 +8,42 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Try to use database adapter if available, otherwise fall back to Supabase
+try:
+    from db_integration.database_adapter import DatabaseAdapter
+    USE_ADAPTER = True
+except ImportError:
+    USE_ADAPTER = False
+
 
 class SupabaseManager:
     """Manager for Supabase database operations."""
     
     def __init__(self):
-        """Initialize Supabase client."""
-        self.url = os.getenv('SUPABASE_URL')
-        self.key = os.getenv('SUPABASE_KEY')
+        """Initialize Supabase client or PostgreSQL adapter."""
+        # Check if we should use Docker PostgreSQL or Supabase
+        use_supabase = os.getenv('USE_SUPABASE', 'false').lower() == 'true'
         
-        if not self.url or not self.key:
-            raise ValueError(
-                "SUPABASE_URL and SUPABASE_KEY must be set in .env file.\n"
-                "Get these from your Supabase project settings."
-            )
-        
-        self.client: Client = create_client(self.url, self.key)
+        if USE_ADAPTER and not use_supabase:
+            # Use Docker PostgreSQL via adapter
+            from db_integration.database_adapter import DatabaseAdapter
+            adapter = DatabaseAdapter()
+            self.client = adapter
+            self.use_adapter = True
+        else:
+            # Use Supabase client (default or explicit)
+            self.url = os.getenv('SUPABASE_URL')
+            self.key = os.getenv('SUPABASE_KEY')
+            
+            if not self.url or not self.key:
+                raise ValueError(
+                    "SUPABASE_URL and SUPABASE_KEY must be set in .env file.\n"
+                    "Get these from your Supabase project settings.\n"
+                    "Or set USE_SUPABASE=false and configure DB_HOST, DB_NAME, etc. for Docker PostgreSQL."
+                )
+            
+            self.client: Client = create_client(self.url, self.key)
+            self.use_adapter = False
     
     # Learning Resources Operations
     

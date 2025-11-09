@@ -18,7 +18,48 @@ An AI-powered system that discovers learning resources, tracks skill trends, and
 
 ## Quick Start
 
-### 🚀 Option 1: React Frontend (MAIN - Production Ready!)
+### 🐳 Option 1: Docker Deployment (RECOMMENDED - Production Ready!)
+
+**Three Services (Default):**
+```powershell
+# Windows
+docker-start.bat
+
+# Linux/Mac
+chmod +x docker-start.sh
+./docker-start.sh
+
+# Or manually:
+docker-compose up -d
+```
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Database**: localhost:5432 (PostgreSQL with pgvector)
+
+The setup includes:
+- **Database service**: PostgreSQL 16 with pgvector extension
+- **Backend service**: FastAPI with AI agents and APIs
+- **Frontend service**: React app with Nginx
+
+**Combined Service (Single Container):**
+```powershell
+docker-compose -f docker-compose.combined.yml up -d
+```
+- Application: http://localhost:8000 (serves both frontend and API)
+
+See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for detailed Docker documentation.
+
+### 🔐 Authentication
+
+The application requires login before accessing the homepage. Test credentials are available for initial setup:
+
+**Test Credentials:**
+- **Username:** `admin` | **Password:** `password123`
+- **Username:** `student` | **Password:** `password123`
+
+You can also register new accounts through the login page. For production, change or remove these default test users.
+
+### 🚀 Option 2: React Frontend (Development)
 ```powershell
 # Easy: Use the launcher
 ./start_dev.bat
@@ -38,13 +79,13 @@ Professional React interface at **http://localhost:5173** with:
 - 📈 Interactive visualizations
 - 📱 Fully responsive & mobile-friendly
 
-### 🌐 Option 2: Streamlit (BACKUP - Quick Prototyping)
+### 🌐 Option 3: Streamlit (BACKUP - Quick Prototyping)
 ```powershell
 streamlit run app.py
 ```
 Simple interface at http://localhost:8501
 
-### 💻 Option 3: Command Line
+### 💻 Option 4: Command Line
 
 #### 1. Install Dependencies
 ```powershell

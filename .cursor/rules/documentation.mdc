@@ -1,0 +1,9 @@
+---
+alwaysApply: true
+---
+
+Dont create documentation/markdown files unless I ask you to.
+
+Creating too many documentation files is a waste of time and tokens.
+
+Except the readme file all other documentation files should be created in a separete folder.

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
-import { FiHome, FiMessageSquare, FiSearch, FiBarChart2, FiMenu, FiSettings, FiBookOpen, FiCalendar, FiUser } from 'react-icons/fi';
+import { BrowserRouter as Router, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { FiHome, FiMessageSquare, FiSearch, FiBarChart2, FiMenu, FiSettings, FiBookOpen, FiCalendar, FiUser, FiLogOut } from 'react-icons/fi';
 import { IoSparklesSharp } from 'react-icons/io5';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
@@ -10,21 +10,52 @@ import Admin from './pages/Admin';
 import Assignments from './pages/Assignments';
 import TodaysClass from './pages/TodaysClass';
 import ExpertConsultation from './pages/ExpertConsultation';
+import Login from './pages/Login';
 import SettingsModal from './components/SettingsModal';
+import ProtectedRoute from './components/ProtectedRoute';
 import { isAdmin as checkAdmin, toggleAdmin } from './utils/adminAuth';
+import { isAuthenticated, getCurrentUser, verifyToken, logout as authLogout } from './utils/auth';
 import './App.css';
 
 function App() {
+  // ALL HOOKS MUST BE CALLED FIRST - BEFORE ANY CONDITIONAL RETURNS
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [studentLevel, setStudentLevel] = useState('Junior');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isAdmin, setIsAdminState] = useState(checkAdmin());
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [health, setHealth] = useState(null);
+  const [logoClickCount, setLogoClickCount] = useState(0);
 
   // Get API base URL from environment
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
                        (typeof window !== 'undefined' && window.ENV?.API_BASE_URL) ||
                        'http://localhost:8000';
+
+  // Check authentication on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (isAuthenticated()) {
+        const user = getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+          setStudentLevel(user.student_level || 'Junior');
+        }
+        
+        // Verify token with backend
+        const valid = await verifyToken();
+        setAuthenticated(valid);
+        if (!valid) {
+          setCurrentUser(null);
+        }
+      }
+      setCheckingAuth(false);
+    };
+    
+    checkAuth();
+  }, []);
 
   // Fetch health status
   useEffect(() => {
@@ -43,9 +74,20 @@ function App() {
     return () => clearInterval(interval);
   }, [API_BASE_URL]);
 
-  // Allow easy admin toggle for development (double-click logo)
-  const [logoClickCount, setLogoClickCount] = useState(0);
+  // Update user state when authenticated changes
+  useEffect(() => {
+    if (authenticated) {
+      const user = getCurrentUser();
+      if (user) {
+        setCurrentUser(user);
+        setStudentLevel(user.student_level || 'Junior');
+      }
+    } else {
+      setCurrentUser(null);
+    }
+  }, [authenticated]);
 
+  // Event handlers
   const handleLogoClick = () => {
     if (logoClickCount === 0) {
       setTimeout(() => setLogoClickCount(0), 3000);
@@ -68,9 +110,40 @@ function App() {
     setSidebarOpen(!sidebarOpen);
   };
 
+  const handleLogout = async () => {
+    await authLogout();
+    setAuthenticated(false);
+    setCurrentUser(null);
+    window.location.href = '/login';
+  };
+
+  // Show loading while checking auth (AFTER all hooks)
+  if (checkingAuth) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={{ color: 'white', fontSize: '1.5rem' }}>Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <Router>
-      <div className="app">
+      <Routes>
+        <Route 
+          path="/login" 
+          element={authenticated ? <Navigate to="/" replace /> : <Login onLogin={() => setAuthenticated(true)} />} 
+        />
+        <Route 
+          path="/*" 
+          element={
+            <ProtectedRoute>
+              <div className="app">
         {/* Top Navigation */}
         <nav className="navbar">
           <div className="navbar-content">
@@ -92,6 +165,12 @@ function App() {
                    title={health?.status === 'healthy' ? 'System Online' : 'Connecting...'}>
               </div>
               
+              {currentUser && (
+                <span style={{ color: '#6b7280', fontSize: '0.9rem', marginRight: '10px' }}>
+                  {currentUser.full_name || currentUser.username}
+                </span>
+              )}
+              
               <select 
                 className="level-select"
                 value={studentLevel}
@@ -103,6 +182,25 @@ function App() {
                 <option>Senior</option>
                 <option>Graduate</option>
               </select>
+              
+              <button
+                onClick={handleLogout}
+                title="Logout"
+                style={{
+                  padding: '8px 16px',
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <FiLogOut /> Logout
+              </button>
               
               {!isAdmin && (
                 <button 
@@ -243,6 +341,10 @@ function App() {
           }}
         />
       </div>
+            </ProtectedRoute>
+          } 
+        />
+      </Routes>
     </Router>
   );
 }

@@ -10,6 +10,7 @@ lxml>=4.9.0
 pydantic>=2.5.0
 tavily-python>=0.3.0
 supabase>=2.0.0
+psycopg2-binary>=2.9.0
 matplotlib>=3.7.0
 pandas>=2.0.0
 streamlit>=1.29.0
